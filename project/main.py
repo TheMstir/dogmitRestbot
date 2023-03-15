@@ -3,6 +3,8 @@ import requests
 import random
 import time
 
+# @DogmeetRestbot
+
 bot = telebot.TeleBot("6025838180:AAFmaoqp7RpQpsrU45YOl0N0lH_6iCAzljo", parse_mode='HTML')
 
 
