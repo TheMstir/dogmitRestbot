@@ -26,7 +26,7 @@ def get_hotels_box(city, count_place, count_photo, flag):
             print(gaiaid)
         except:
             ex = ['Увы, тут я сейчас разнюхать не могу❓\nКто-то все спрятал...🚷\n'
-            'пойдем в /help, что-нибудь придумаем🔙']
+                  'пойдем в /help, что-нибудь придумаем🔙']
             list_view.append(ex)
             return list_view
 
@@ -73,7 +73,10 @@ def get_hotels_box(city, count_place, count_photo, flag):
             price = data_2['data']['propertySearch']['properties'][i]['mapMarker']['label']
             coordinates_lat = data_2['data']['propertySearch']['properties'][i]['mapMarker']['latLong']['latitude']
             coordinates_lon = data_2['data']['propertySearch']['properties'][i]['mapMarker']['latLong']['longitude']
+            dest_from_center = data_2['data']['propertySearch']['properties'][i]['destinationInfo']['distanceFromDestination']['value']*1.602
+            #  сделать универсальное начало для последних 3х переменных
             print('b')
+            print(list_view)
 
             payload = {
                 "currency": "USD",
@@ -87,22 +90,26 @@ def get_hotels_box(city, count_place, count_photo, flag):
             data_3 = response_3.json()
             address = data_3['data']['propertyInfo']['summary']['location']['address']['addressLine']
             tag = data_3['data']['propertyInfo']['summary']['tagline']
+
             for j in range(count_photo):
                 photo = data_3['data']['propertyInfo']['propertyGallery']['images'][j]['image']['url']
                 little_photo_list.append(photo)
 
-            mess = f"Отель <b>{name}</b>, с оценкой в {stars}⭐," \
-                   f"\nОписывается как: {tag}\n💲Cредняя цена за сутки: {price}\n" \
-                   f"🌎Географически расположен {coordinates_lat}, {coordinates_lon}\n" \
-                   f"🗺️То есть по адресу: {address}" \
+            mess = f"Отель <b>{name}</b>, с оценкой в {stars}⭐,\n" \
+                   f"Описывается как: {tag}\n💲Cредняя цена за сутки: " \
+                   f"{price}\n🌎Географически расположен {coordinates_lat}, {coordinates_lon}\n" \
+                   f"🗺️То есть по адресу: {address}\n" \
+                   f"Что находиться в {dest_from_center.d}км.\n/тут наверное мили сейчас/ от центра города" \
                    f"🏢Если будете искать то смотрите такое здание: {url_photo}"
+
+            # оставил доп знаки чтобы вытащить координаты регулярками и в дальнейшем передать их
 
             if count_photo == 0:
                 list_view.append([mess])
 
             if count_photo > 0:
-                list_view.append([(mess, little_photo_list)])
-                print(list_view)
+                list_view.append([mess, little_photo_list])
+                little_photo_list = []  # очищаем промежуточный список чтобы наверняка не переносить фотки в допы
 
         return list_view
 

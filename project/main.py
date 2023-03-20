@@ -1,35 +1,29 @@
+import urllib.request
+
 import telebot
-from telebot.types import KeyboardButton, ReplyKeyboardMarkup
 import random
 import time
 from weather import get_weather_box
 import logging
 import config
-import sqlite3
 from telebot.handler_backends import State, StatesGroup
 from telebot.storage import StateMemoryStorage
 from telebot import types
 from hotels_hostels import get_hotels_box
-
+import Homeland_rus
 
 # @DogmeetRestbot
 cash_storage = StateMemoryStorage()
 
 bot = telebot.TeleBot(config.token, parse_mode='HTML', state_storage=cash_storage)
 
-# пара быстрых кнопок потом переедет в функцию
-markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-btn1 = types.KeyboardButton("👋 Быстрый поиск")
-btn2 = types.KeyboardButton("❓ Help/Menu")
-markup.add(btn1, btn2)
-
 
 class MyStates(StatesGroup):
     """Хранлилище для промежуточных данных поискового запроса"""
-    flag = State() # в дальнейшем для определения
-    city = State()
-    count_place = State()
-    count_photos = State()  # None/10(max)
+    flag = State()  # в дальнейшем для определения сортировки
+    city = State()  # название региона поиска
+    count_place = State()  # количество предлагаемых отелей
+    count_photos = State()  # None/5(max)
 
 
 @bot.message_handler(regexp='Привет')
@@ -63,11 +57,20 @@ def send_welcome(message: types.Message):
         mess = f'Привет! <b>{message.from_user.first_name}</b> я поисковая собачка 🐕 компании "Too Easy Travel"!, ' \
                f'Я здесь специально для того, чтобы помочь тебе найти самую лучшую гостиницу для отдыха!'
     bot.send_message(message.chat.id, mess, parse_mode='HTML')
-    time.sleep(1.5)
-    # TODO прикрутить счетчик предложений помощи/фактов, чтобы не надоедать
-    bot.send_message(message.chat.id, 'Хочешь узнать как со мной работать? Жми /help,\n'
-                                      'Если все знаешь то давай приступать\n'
-                                      '/заглушка для будущих команд в виде меню или интересного факта о путешествиях/')
+    time.sleep(1)
+    bot.send_message(message.chat.id, f'Хочешь узнать как со мной работать? Жми /help,\n'
+                                      f'Включить быстрое меню? /fast_menu\n'
+                                      f'Если все знаешь то давай приступать\n')
+    fact = facts()
+    bot.send_message(message.chat.id, fact)
+    # пара быстрых кнопок потом переедет в функцию
+
+
+@bot.message_handler(commands=['fast_menu'])
+def menu(message: types.Message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row("👋 Быстрый поиск", "❓ Help/Menu")
+    bot.send_message(message.from_user.id, 'ok', reply_markup=markup)
 
 
 @bot.message_handler(commands=['help'])
@@ -75,19 +78,35 @@ def show_help_menu(message: types.Message):
     """
     Меню навигации в виде записи для помощи
     позволяет быстро перейти к основному функционалу
+    иногда подкидывает факт из списка
     """
     mess = '''Гав! 🐶 Вот что мы можем сделать прямо сейчас:
 /start чтобы начать наше общение
 /low_price чтобы выбрать самые доступные по цене гостиницы ⛺🏚️
 /high_price чтобы выбрать самые крутые и дорогие места для жизни 💎🏛️
 /best_deal чтобы найти лучшие предложения в тех местах куда вы направляетесь 💼💰
-/homeland_rus чтобы посмотреть гостиницы в городах России /для малых городов/
+/homeland_rus чтобы посмотреть гостиницы в городах России /для малых городов, только список/
 /weather чтобы ознакомиться с погодой на местности и решиться на выбор поближе к пляжу🌅
 /history БУДЕТ СПОСОБНО отправить вам вашу историю запросов
 /cancel 🗙 отменяет введенные данные и позволяет ввести новый запрос города ♺
 Можем просто немного пообщаться, но помни что я всего-лишь цифровой 🐕‍🦺 бот-песик и умею не так уж и много
     '''
     bot.send_message(message.chat.id, mess, parse_mode='HTML')
+    dice = random.randint(1, 6)
+    if dice == 6:
+        time.sleep(0.5)
+        bot.send_message(message.chat.id, facts())
+
+
+@bot.message_handler(commands=['homeland_rus'])
+def homelandrus(message: types.Message):
+    """Функция поиска отелей в регионе
+    где нет gaiaId, соответственно без сортировки, просто выдачей
+    """
+    bot.send_message(message.chat.id, 'Поищем местные отели:  ️🈂️')
+    time.sleep(1)
+    sent = bot.send_message(message.chat.id, 'В каком городе будем искать?: ')
+    bot.register_next_step_handler(sent, homeland)
 
 
 @bot.message_handler(commands=['low_price'])
@@ -101,6 +120,7 @@ def low_price(message: types.Message):
     time.sleep(1)
     sent = bot.send_message(message.chat.id, 'В каком городе будем искать?: ')
     bot.register_next_step_handler(sent, get_city_seartch)
+
 
 @bot.message_handler(commands=['high_price'])
 def high_price(message: types.Message):
@@ -162,7 +182,7 @@ def get_count_place(message: types.Message):
 
         markup_inline.add(item_yes, item_no)
         print(message.chat.id)
-        bot.send_message(message.chat.id, f'Гав! Отлично {message.from_user.first_name}!'
+        bot.send_message(message.chat.id, f'Гав! Отлично {message.from_user.first_name}! '
                                           f'показать фотографии?', reply_markup=markup_inline)
 
     else:
@@ -171,6 +191,12 @@ def get_count_place(message: types.Message):
 
 @bot.callback_query_handler(func=lambda call: True)
 def photos_yn(call):
+    """
+    Опрашивающие кнопки уточняют нужны ли фотографии отелей
+    если нет, то пользователю сразу отправляется ответ.
+    Предполагаю сдвинуть ответ в отдельную функцию, однако на данном этапе в этом нет
+    необходимости
+    """
     print(call.message.chat.id)
     if call.data == 'yes':
         sent = bot.send_message(call.message.chat.id, 'Отлично, сколько хочешь фотографий, я сбегаю за ними!')
@@ -180,9 +206,8 @@ def photos_yn(call):
         bot.send_message(call.message.chat.id, 'Отлично!🐾 сейчас подготовлю ссылки')
         time.sleep(1)
         mess = get_hotels_box(MyStates.city, MyStates.count_place, 0, MyStates.flag)
-        print(mess)
 
-        # get_hotels() # Ссылка на функцию low_price_s в hotel_hostels
+        # get_hotels() # Ссылка на функцию hotel_hostels
         for el in mess:
             bot.send_message(call.message.chat.id, *el, parse_mode='HTML')
 
@@ -196,20 +221,40 @@ def photos_yn(call):
 def photos_get(message: types.Message):
     """
     Запрашивается необходимость фотографий
+    и выводиться финальный результат обработки
+    Фотографии приходят дополнительным элементом списка и вынимаются из
     """
     bot.set_state(message.from_user.id, '')
     count = message.text
     if count.isdigit():
+        if int(count) > 5:
+            bot.send_message(message.chat.id, 'Много, я маленький, максимум 5 штук принесу')
+            count = 4
         MyStates.count_photos = int(count)
         bot.send_message(message.chat.id, 'Отлично! сейчас подготовлю ссылки')
         time.sleep(0.5)
         mess = get_hotels_box(MyStates.city, MyStates.count_place, MyStates.count_photos, MyStates.flag)
+        bot.send_message(message.chat.id, mess[0], parse_mode='HTML')
+        try:
+            for el in mess[1:]:
+                print(el)
+                bot.send_message(message.chat.id, el[0], parse_mode='HTML')
+                for elo in el[1]:
+                    print(elo)
+                    bot.send_message(message.chat.id, elo, parse_mode='HTML')
 
-        for el in mess:
-            bot.send_message(message.chat.id, el[1], parse_mode='HTML')
-            for elo in el[2]:
-                photo = open(f'{elo}', 'rb')
-                bot.send_photo(message.chat.id, photo)
+
+                #TODO: доделать когда появиться нормальное соединение
+                #for elo in el[1]:
+                 #   print(elo)
+                    #f = open('out.jpg', 'wb')
+                    #f.write(urllib.request.urlopen(elo).read())
+                    #f.close()
+                    #photo = open(f'{elo}', 'rb')
+                    #bot.send_photo(message.chat.id, photo)
+        except:
+            bot.send_message(message.chat.id, 'ГАВ!🐦📛 Сейчас фотографий нет, все лапки стер и не нашел',
+                             parse_mode='HTML')
 
         weather = get_weather_box(MyStates.city)  # добавление погоды на текущий момент в
         # городе где производиться поиск
@@ -228,6 +273,20 @@ def any_state(message: types.Message):
     MyStates.count_place = 0
     MyStates.count_photos = 0
     bot.delete_state(message.from_user.id, message.chat.id)
+    show_help_menu(message)
+
+
+def homeland(message):
+    bot.set_state(message.from_user.id, '')
+    MyStates.city = message.text
+    print(MyStates.city)
+    bot.send_message(message.chat.id, 'Хорошее место!🦮 сбегаю и посмотрю что там есть')
+    mess = Homeland_rus.get_hotels(MyStates.city)
+    for el in mess:
+        bot.send_message(message.chat.id, el, parse_mode='HTML')
+
+    weather = get_weather_box(MyStates.city)
+    bot.send_message(message.chat.id, weather, parse_mode='HTML')
 
 
 @bot.message_handler(state=MyStates.count_place or MyStates.count_photos, is_digit=False)  # неверный числовой ввод
@@ -236,7 +295,7 @@ def incorrect(message: types.Message):
     Неправильный вид данных для числового запроса
     """
     bot.send_message(message.chat.id, 'Гав, выглядит так, будто ты вводишь числа буквами... Я не знаю, '
-                                      'просто введи число или лучше начнем сначала /help, /start')
+                                      'просто введи число или лучше начнем сначала\n/help, /start')
     bot.register_next_step_handler(message, send_welcome)
 
 
@@ -263,8 +322,26 @@ def date_from_user(message: types.Message):
     Функция получает данные от пользователя и в случае необходимого запроса возвращает в переменную
     :return:
     """
-    return message.text
+    if message.text == '👋 Быстрый поиск':
+        best_price(message)
+    if message.text == '❓ Help/Menu':
+        show_help_menu(message)
 
+
+def facts() -> str:
+    with open('facts.txt', 'r', encoding='utf-8') as f:
+        mess = f.read().split('\n')
+        dice = random.randint(1, 10)
+        fact = mess[dice]
+    return fact
+
+
+def history():
+    # если кто-то начинает использование то фунцкия берет его имя из бота, берет текущую дату
+    # Записывает элементы и выводы в фаил.
+    # Выдает фаил по запросу
+    # так же может применяться для многозадачности, сохраняя конфиг запроса в личном файле, а не в классе
+    pass
 
 
 #bot.enable_save_next_step_handlers(delay=2)
