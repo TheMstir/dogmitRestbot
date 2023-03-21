@@ -1,21 +1,22 @@
-import urllib.request
-
 import telebot
 import random
 import time
 from weather import get_weather_box
+import requests
 import logging
 import config
 from telebot.handler_backends import State, StatesGroup
 from telebot.storage import StateMemoryStorage
 from telebot import types
+from telebot import custom_filters
 from hotels_hostels import get_hotels_box
 import Homeland_rus
+from history_controller import history_file
 
 # @DogmeetRestbot
 cash_storage = StateMemoryStorage()
 
-bot = telebot.TeleBot(config.token, parse_mode='HTML', state_storage=cash_storage)
+bot = telebot.TeleBot(config.token, state_storage=cash_storage)
 
 
 class MyStates(StatesGroup):
@@ -25,24 +26,24 @@ class MyStates(StatesGroup):
     count_place = State()  # количество предлагаемых отелей
     count_photos = State()  # None/5(max)
 
-
 @bot.message_handler(regexp='Привет')
 @bot.message_handler(commands=['hello-world'])
 def hello_start(message: types.Message):
     """
     Бот здоровается несколькими вариантами в ответ на преветсвие
     """
-    dice = random.randint(0, 2)
+    dice = random.randint(0, 3)
     if dice == 0:
         mes = 'Готов к работе!'
     elif dice == 1:
         mes = 'Привет! Я бот искатель гостиниц! 👋'
     elif dice == 2:
         mes = 'Привет! 👋 У нас принято начинать с команды /start'
-    else:
+    elif dice == 3:
         mes = 'Это лишь тестовая версия, я обязательно всему научусь и помогу вам, но позже'
+    else:
+        mes = facts()
 
-# придумать как анализировать постоянный запрос и выдавать смешные цитаты из API
     bot.send_message(message.chat.id, mes, parse_mode='HTML')
 
 
@@ -116,10 +117,14 @@ def low_price(message: types.Message):
     ведет к цепочке стандартного сбора информации
     """
     bot.send_message(message.chat.id, 'Поищем дешевые отели:  ️🈂️')
-    MyStates.flag = 'PRICE_LOW_TO_HIGH'
+    bot.set_state(message.from_user.id, MyStates.flag, message.chat.id)
+
+    with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
+        data['flag'] = 'PRICE_LOW_TO_HIGH'
     time.sleep(1)
-    sent = bot.send_message(message.chat.id, 'В каком городе будем искать?: ')
-    bot.register_next_step_handler(sent, get_city_seartch)
+    bot.send_message(message.chat.id, 'В каком городе будем искать?: ')
+
+    bot.set_state(message.from_user.id, MyStates.city, message.chat.id)
 
 
 @bot.message_handler(commands=['high_price'])
@@ -131,10 +136,15 @@ def high_price(message: types.Message):
     ведет к цепочке стандартного сбора информации
     """
     bot.send_message(message.chat.id, 'Будем искать лучшие предложения: 💸️🧐')
-    MyStates.flag = 'PRICE_HIGHEST_FIRST'
+
+    bot.set_state(message.from_user.id, MyStates.flag, message.chat.id)
+
+    with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
+        data['flag'] = 'PRICE_HIGHEST_FIRST'
     time.sleep(0.2)
-    sent = bot.send_message(message.chat.id, 'Буду стараться🐕! В каком городе ищем?: ')
-    bot.register_next_step_handler(sent, get_city_seartch)
+    bot.send_message(message.chat.id, 'Буду стараться🐕! В каком городе ищем?: ')
+
+    bot.set_state(message.from_user.id, MyStates.city, message.chat.id)
 
 
 @bot.message_handler(commands=['best_deal'])
@@ -145,37 +155,50 @@ def best_price(message: types.Message):
     на данный момент от нее и идет сборка необходимых данных
     """
     bot.send_message(message.chat.id, 'Конечно помогу в поиске лучших предложений, товарищ!🦮:  ️🉐')
-    MyStates.flag = 'STANCE_FROM_LANDMARK', 'BEST_SELLER'
+
+    bot.set_state(message.from_user.id, MyStates.flag, message.chat.id)
+
+    with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
+        data['flag'] = 'STANCE_FROM_LANDMARK', 'BEST_SELLER'
     time.sleep(1)
-    sent = bot.send_message(message.chat.id, 'В каком городе собираемся заночевать?🏖️: ')
-    bot.register_next_step_handler(sent, get_city_seartch)
+    bot.send_message(message.chat.id, 'В каком городе собираемся заночевать?🏖️: ')
+
+    bot.set_state(message.from_user.id, MyStates.city, message.chat.id)
+
+    #bot.register_next_step_handler(sent, get_city_seartch)
 
 
+@bot.message_handler(state=MyStates.city)
 def get_city_seartch(message: types.Message):
     """
     Запрашивается в случае получения названия города запроса
     присваивает название города для дальнейшего применения
     """
-    bot.set_state(message.from_user.id, '')
-    MyStates.city = message.text
-    print(MyStates.city)
-    sent = bot.send_message(message.chat.id, 'Классный город!🦮 Сколько гостиниц хочешь посмотреть?')
-    bot.register_next_step_handler(sent, get_count_place)
+    bot.send_message(message.chat.id, 'Классный город!🦮 Сколько гостиниц хочешь посмотреть?')
+
+    bot.set_state(message.from_user.id, MyStates.count_place, message.chat.id)
+
+    with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
+        data['city'] = message.text
 
 
+@bot.message_handler(state=MyStates.count_place, is_digit=True)
 def get_count_place(message: types.Message):
     """
     Получает количество отелей для вывода
     пока ограничу 5 как максимум.
     """
-    bot.set_state(message.from_user.id, '')
-    count = message.text
-    if count.isdigit():
-        MyStates.count_place = int(count)
-        if MyStates.count_place > 5:
+    print(message.from_user.id, message.chat.id)
+
+    with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
+        data['count_place'] = message.text
+        print(data['count_place'])
+
+    if data['count_place'].isdigit():
+        data['count_place'] = int(data['count_place'])
+        if data['count_place'] > 5:
             bot.send_message(message.chat.id, 'Я думаю 5 будет достаточно, 🐾 лапки коротковаты, я же маленький пес')
-            MyStates.count_place = 5
-        print(MyStates.count_place)
+            data['count_place'] = 5
         markup_inline = types.InlineKeyboardMarkup()
         item_yes = types.InlineKeyboardButton(text='👋 ДА', callback_data='yes')
         item_no = types.InlineKeyboardButton(text='🚫 НЕТ', callback_data='no')
@@ -197,70 +220,91 @@ def photos_yn(call):
     Предполагаю сдвинуть ответ в отдельную функцию, однако на данном этапе в этом нет
     необходимости
     """
-    print(call.message.chat.id)
+    print(call.from_user.id, call.message.chat.id)
     if call.data == 'yes':
-        sent = bot.send_message(call.message.chat.id, 'Отлично, сколько хочешь фотографий, я сбегаю за ними!')
-        bot.register_next_step_handler(sent, photos_get)
+        send = bot.send_message(call.message.chat.id, 'Отлично U・ᴥ・U! сколько хочешь фотографий, я сбегаю за ними!')
+        bot.register_next_step_handler(send, photos_get)
+
     elif call.data == 'no':
         # переделать чтобы просто получать ноль
-        bot.send_message(call.message.chat.id, 'Отлично!🐾 сейчас подготовлю ссылки')
+
+        sent = bot.send_message(call.message.chat.id, 'Отлично!🐾 сейчас подготовлю ссылки')
         time.sleep(1)
-        mess = get_hotels_box(MyStates.city, MyStates.count_place, 0, MyStates.flag)
+        with bot.retrieve_data(call.from_user.id, call.message.chat.id) as data:
+            data['count_photos'] = 0
 
-        # get_hotels() # Ссылка на функцию hotel_hostels
-        for el in mess:
-            bot.send_message(call.message.chat.id, *el, parse_mode='HTML')
+        print(call.from_user.id, call.message.chat.id)
+        bot.register_next_step_handler(sent, ready)
+        bot.send_message(call.message.chat.id, 'Я 🐶подготовил! Высылать? 🦊 /go')
 
-        weather = get_weather_box(MyStates.city)  # добавление погоды на текущий момент в
-        # городе где производиться поиск
-        bot.send_message(call.message.chat.id, weather, parse_mode='HTML')
     else:
         bot.register_next_step_handler(call.message.chat.id, incorrect)
 
 
+@bot.message_handler(state=MyStates.count_photos, is_digit=True)
 def photos_get(message: types.Message):
     """
     Запрашивается необходимость фотографий
     и выводиться финальный результат обработки
-    Фотографии приходят дополнительным элементом списка и вынимаются из
+    Фотографии приходят дополнительным элементом списка и вынимаются из него в виде доп. сообщений
     """
-    bot.set_state(message.from_user.id, '')
-    count = message.text
-    if count.isdigit():
-        if int(count) > 5:
+    print('начали считать')
+    with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
+        data['count_photos'] = message.text
+    if data['count_photos'].isdigit():
+        if int(data['count_photos']) > 5:
             bot.send_message(message.chat.id, 'Много, я маленький, максимум 5 штук принесу')
-            count = 4
-        MyStates.count_photos = int(count)
-        bot.send_message(message.chat.id, 'Отлично! сейчас подготовлю ссылки')
+            data['count_photos'] = 4
+        data['count_photos'] = int(data['count_photos'])
+        sent = bot.send_message(message.chat.id, 'Отлично! сейчас подготовлю ссылки')
         time.sleep(0.5)
-        mess = get_hotels_box(MyStates.city, MyStates.count_place, MyStates.count_photos, MyStates.flag)
-        bot.send_message(message.chat.id, mess[0], parse_mode='HTML')
-        try:
+        bot.send_message(message.chat.id, '🐶Гавтовы!🦊 Высылать? /go')
+        bot.register_next_step_handler(sent, ready)
+
+    else:
+        bot.register_next_step_handler(message, incorrect)
+
+    print('count_p прошел')
+    print(message.from_user.id, message.chat.id)
+
+
+def ready(message: types.Message):
+    """
+    Функция завершающая сбор данных, отправляющая запарос в функцию поиска отелей
+    собирает информацию в список 2х вариантов и в зависимости от значения фото выдает
+    результаты двух видов.
+
+    """
+    print('кто-то пришел')
+    data = cash_storage.get_data(message.from_user.id, message.chat.id)
+
+    mess = get_hotels_box(data['city'], data['count_place'], data['count_photos'], data['flag'])
+
+    name_id = f'{message.from_user.first_name}_{message.from_user.last_name}'
+    history_file(name_id, data['city'], data['count_place'], data['flag'], mess)
+
+    try:
+        if data['count_photos'] > 0:
+            bot.send_message(message.chat.id, mess[0], parse_mode='HTML')
             for el in mess[1:]:
                 print(el)
                 bot.send_message(message.chat.id, el[0], parse_mode='HTML')
                 for elo in el[1]:
                     print(elo)
-                    bot.send_message(message.chat.id, elo, parse_mode='HTML')
+                    bot.send_photo(message.chat.id, elo)
+        else:
+            for el in mess:
+                bot.send_message(message.chat.id, *el, parse_mode='HTML')
 
+    except:
+        bot.send_message(message.chat.id, 'ГАВ!🐦📛 Сейчас фотографий нет, все лапки стер и не нашел',
+                         parse_mode='HTML')
 
-                #TODO: доделать когда появиться нормальное соединение
-                #for elo in el[1]:
-                 #   print(elo)
-                    #f = open('out.jpg', 'wb')
-                    #f.write(urllib.request.urlopen(elo).read())
-                    #f.close()
-                    #photo = open(f'{elo}', 'rb')
-                    #bot.send_photo(message.chat.id, photo)
-        except:
-            bot.send_message(message.chat.id, 'ГАВ!🐦📛 Сейчас фотографий нет, все лапки стер и не нашел',
-                             parse_mode='HTML')
-
-        weather = get_weather_box(MyStates.city)  # добавление погоды на текущий момент в
-        # городе где производиться поиск
-        bot.send_message(message.chat.id, weather, parse_mode='HTML')
-    else:
-        bot.register_next_step_handler(message, incorrect)
+    weather = get_weather_box(data['city'])  # добавление погоды на текущий момент в
+    # городе где производиться поиск
+    bot.send_message(message.chat.id, weather, parse_mode='HTML')
+    # и удаляем мусор дичь
+    bot.delete_state(message.from_user.id, message.chat.id)
 
 
 @bot.message_handler(state="*", commands=['cancel'])
@@ -268,24 +312,27 @@ def any_state(message: types.Message):
     """
     Сброс данных в States по запросу пользователя
     """
+    data = cash_storage.get_data(message.from_user.id, message.chat.id)
     bot.send_message(message.chat.id, "Ваши установки отменены.")
-    MyStates.city = ''
-    MyStates.count_place = 0
-    MyStates.count_photos = 0
+
+    data['city'] = ''
+    data['count_place'] = 0
+    data['count_photos'] = 0
+    # видимо то что выше не нужно.
     bot.delete_state(message.from_user.id, message.chat.id)
     show_help_menu(message)
 
 
 def homeland(message):
     bot.set_state(message.from_user.id, '')
-    MyStates.city = message.text
-    print(MyStates.city)
+    city = message.text
+    print(city)
     bot.send_message(message.chat.id, 'Хорошее место!🦮 сбегаю и посмотрю что там есть')
-    mess = Homeland_rus.get_hotels(MyStates.city)
+    mess = Homeland_rus.get_hotels(city)
     for el in mess:
         bot.send_message(message.chat.id, el, parse_mode='HTML')
 
-    weather = get_weather_box(MyStates.city)
+    weather = get_weather_box(city)
     bot.send_message(message.chat.id, weather, parse_mode='HTML')
 
 
@@ -310,6 +357,10 @@ def get_weather(message: types.Message):
 
 
 def weather_date(message: types.Message):
+    """
+    Принимает запрос на погоду в каком-то городе
+    Отправляет название в функцию и возвращает в бота соответсвующее сообщение
+    """
     city = message.text
     print(city)
     mess = get_weather_box(city)
@@ -317,7 +368,7 @@ def weather_date(message: types.Message):
 
 
 @bot.message_handler(content_types=['text'])
-def date_from_user(message: types.Message):
+def date_from_user(message):
     """
     Функция получает данные от пользователя и в случае необходимого запроса возвращает в переменную
     :return:
@@ -329,6 +380,10 @@ def date_from_user(message: types.Message):
 
 
 def facts() -> str:
+    """
+    Берет из приложенного файла со случайными фактами и возвращает ее.
+    :return: строчку с фактом
+    """
     with open('facts.txt', 'r', encoding='utf-8') as f:
         mess = f.read().split('\n')
         dice = random.randint(1, 10)
@@ -336,19 +391,39 @@ def facts() -> str:
     return fact
 
 
-def history():
+@bot.message_handler(commands=['history'])
+def history(message):
     # если кто-то начинает использование то фунцкия берет его имя из бота, берет текущую дату
     # Записывает элементы и выводы в фаил.
     # Выдает фаил по запросу
     # так же может применяться для многозадачности, сохраняя конфиг запроса в личном файле, а не в классе
-    pass
+
+    name_id = f'{message.from_user.first_name}_{message.from_user.last_name}'
+    print(message.from_user.id)
+
+    try:
+        with open(f'historys/{name_id}.json', 'r', encoding='utf-8') as r:
+            print('b')
+            fp = r.read(500)
+            bot.send_message(message.from_user.id, fp)
+
+            #rom = r.read().split('\n')
+            #for el in rom:
+             #   bot.send_message(message.from_user.id, el, parse_mode='JSON')
+        bot.send_document(message.from_user.id, f'/historys/{name_id}.json')  # Какая будет дичь если заработает)
+    except:
+        bot.send_message(message.from_user.id, 'Вууф... почему-то я не могу найти твою историю')
 
 
 #bot.enable_save_next_step_handlers(delay=2)
 #bot.load_next_step_handlers()
 
-bot.polling(none_stop=True)
+#bot.polling(none_stop=True)
 
 
 #  logger = telebot.logger
 #  telebot.logger.setLevel(logging.DEBUG)
+bot.add_custom_filter(custom_filters.StateFilter(bot))
+bot.add_custom_filter(custom_filters.IsDigitFilter())
+
+bot.infinity_polling(skip_pending=True)
