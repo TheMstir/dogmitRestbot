@@ -9,7 +9,7 @@ url_data = "https://hotels4.p.rapidapi.com/properties/v2/detail"
 headers = hotels_token
 
 
-def get_hotels_box(city, count_place, count_photo, flag):
+def get_hotels_box(city: str, count_place: int, count_photo: int, flag: str) -> list:
     list_view = [[f'🐶А вот и список гостиниц по вашему запросу в: {city}'], ]
     little_photo_list = []
 
@@ -93,10 +93,10 @@ def get_hotels_box(city, count_place, count_photo, flag):
                 little_photo_list.append(photo)
 
             mess = f"Отель <b>{name}</b>, с оценкой в {stars}⭐,\n" \
-                   f"Описывается как: {tag}\n💲Cредняя цена за сутки: " \
+                   f"Описывается как: {tag}\nCредняя цена💲 за сутки: " \
                    f"{price}\n🌎Географически расположен {coordinates_lat}, {coordinates_lon}\n" \
                    f"🗺️То есть по адресу: {address}\n" \
-                   f"Что находиться в {int(dest_from_center)}км.\n/тут наверное мили сейчас/ от центра города" \
+                   f"Что находиться в {int(dest_from_center)}км.\n от центра города 🏬" \
                    f"🏢Если будете искать то смотрите такое здание: {url_photo}"
             # считаю визуально необходимым прикрепить хотя бы одно фото к выдаче в виде ссылки
 

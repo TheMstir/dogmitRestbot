@@ -248,7 +248,6 @@ def photos_get(message: types.Message):
     и выводиться финальный результат обработки
     Фотографии приходят дополнительным элементом списка и вынимаются из него в виде доп. сообщений
     """
-    print('начали считать')
     with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
         data['count_photos'] = message.text
     if data['count_photos'].isdigit():
@@ -275,7 +274,6 @@ def ready(message: types.Message):
     результаты двух видов.
 
     """
-    print('кто-то пришел')
     data = cash_storage.get_data(message.from_user.id, message.chat.id)
 
     mess = get_hotels_box(data['city'], data['count_place'], data['count_photos'], data['flag'])
@@ -287,10 +285,8 @@ def ready(message: types.Message):
         if data['count_photos'] > 0:
             bot.send_message(message.chat.id, mess[0], parse_mode='HTML')
             for el in mess[1:]:
-                print(el)
                 bot.send_message(message.chat.id, el[0], parse_mode='HTML')
                 for elo in el[1]:
-                    print(elo)
                     bot.send_photo(message.chat.id, elo)
         else:
             for el in mess:
@@ -326,7 +322,6 @@ def any_state(message: types.Message):
 def homeland(message):
     bot.set_state(message.from_user.id, '')
     city = message.text
-    print(city)
     bot.send_message(message.chat.id, 'Хорошее место!🦮 сбегаю и посмотрю что там есть')
     mess = Homeland_rus.get_hotels(city)
     for el in mess:
@@ -346,11 +341,34 @@ def incorrect(message: types.Message):
     bot.register_next_step_handler(message, send_welcome)
 
 
+@bot.message_handler(commands=['history'])
+def histors(message: types.Message):
+    """
+    Функция показывает историю
+    :param message:
+    :return:
+    """
+    name_id = f'{message.from_user.first_name}_{message.from_user.last_name}'
+
+    try:
+        with open(f'historys/{name_id}.json', 'r', encoding='utf-8') as r:
+            for i in range(15):
+                fp = r.readline()
+                fp = fp.partition('🏬')[0]
+                fp = fp.replace('\\n', ' ').replace('[', '').replace("'", '')
+                bot.send_message(message.from_user.id, fp, parse_mode='HTML')
+
+        bot.send_document(message.from_user.id, f'historys/{name_id}.json')  # Какая будет дичь если заработает)
+
+    except:
+        bot.send_message(message.from_user.id, 'Вууф... почему-то я не могу найти твою историю')
+
+
 @bot.message_handler(commands=['weather'])
 def get_weather(message: types.Message):
     """
     Небольшая отсебятина выводящая погоду, так же по
-    необходимости БУДЕТ передаВАТЬ данные ДОПОЛНИТЕЛЬНЫМ СООБЩЕНИЕМ к поиску гостиниц
+     передает данные дополнительным сообщением к поиску гостиниц
     """
     sent = bot.send_message(message.chat.id, '🌆🧳Введите город: ', parse_mode='HTML')  #
     bot.register_next_step_handler(sent, weather_date)
@@ -389,30 +407,6 @@ def facts() -> str:
         dice = random.randint(1, 10)
         fact = mess[dice]
     return fact
-
-
-@bot.message_handler(commands=['history'])
-def history(message):
-    # если кто-то начинает использование то фунцкия берет его имя из бота, берет текущую дату
-    # Записывает элементы и выводы в фаил.
-    # Выдает фаил по запросу
-    # так же может применяться для многозадачности, сохраняя конфиг запроса в личном файле, а не в классе
-
-    name_id = f'{message.from_user.first_name}_{message.from_user.last_name}'
-    print(message.from_user.id)
-
-    try:
-        with open(f'historys/{name_id}.json', 'r', encoding='utf-8') as r:
-            print('b')
-            fp = r.read(500)
-            bot.send_message(message.from_user.id, fp)
-
-            #rom = r.read().split('\n')
-            #for el in rom:
-             #   bot.send_message(message.from_user.id, el, parse_mode='JSON')
-        bot.send_document(message.from_user.id, f'/historys/{name_id}.json')  # Какая будет дичь если заработает)
-    except:
-        bot.send_message(message.from_user.id, 'Вууф... почему-то я не могу найти твою историю')
 
 
 #bot.enable_save_next_step_handlers(delay=2)
