@@ -2,8 +2,6 @@ import telebot
 import random
 import time
 from weather import get_weather_box
-import requests
-import logging
 import config
 from telebot.handler_backends import State, StatesGroup
 from telebot.storage import StateMemoryStorage
@@ -26,13 +24,15 @@ class MyStates(StatesGroup):
     count_place = State()  # количество предлагаемых отелей
     count_photos = State()  # None/5(max)
 
+
 @bot.message_handler(regexp='Привет')
 @bot.message_handler(commands=['hello-world'])
 def hello_start(message: types.Message):
     """
     Бот здоровается несколькими вариантами в ответ на преветсвие
     """
-    dice = random.randint(0, 3)
+    dice = random.randint(0, 4)
+    mes = ''
     if dice == 0:
         mes = 'Готов к работе!'
     elif dice == 1:
@@ -41,7 +41,7 @@ def hello_start(message: types.Message):
         mes = 'Привет! 👋 У нас принято начинать с команды /start'
     elif dice == 3:
         mes = 'Это лишь тестовая версия, я обязательно всему научусь и помогу вам, но позже'
-    else:
+    elif dice == 4:
         mes = facts()
 
     bot.send_message(message.chat.id, mes, parse_mode='HTML')
@@ -64,7 +64,6 @@ def send_welcome(message: types.Message):
                                       f'Если все знаешь то давай приступать\n')
     fact = facts()
     bot.send_message(message.chat.id, fact)
-    # пара быстрых кнопок потом переедет в функцию
 
 
 @bot.message_handler(commands=['fast_menu'])
@@ -89,7 +88,7 @@ def show_help_menu(message: types.Message):
 /homeland_rus чтобы посмотреть гостиницы в городах России /для малых городов, только список/
 /weather чтобы ознакомиться с погодой на местности и решиться на выбор поближе к пляжу🌅
 /history БУДЕТ СПОСОБНО отправить вам вашу историю запросов
-/cancel 🗙 отменяет введенные данные и позволяет ввести новый запрос города ♺
+/cancel ❌ отменяет введенные данные и позволяет ввести новый запрос города ♻️
 Можем просто немного пообщаться, но помни что я всего-лишь цифровой 🐕‍🦺 бот-песик и умею не так уж и много
     '''
     bot.send_message(message.chat.id, mess, parse_mode='HTML')
@@ -165,8 +164,6 @@ def best_price(message: types.Message):
 
     bot.set_state(message.from_user.id, MyStates.city, message.chat.id)
 
-    #bot.register_next_step_handler(sent, get_city_seartch)
-
 
 @bot.message_handler(state=MyStates.city)
 def get_city_seartch(message: types.Message):
@@ -213,7 +210,7 @@ def get_count_place(message: types.Message):
 
 
 @bot.callback_query_handler(func=lambda call: True)
-def photos_yn(call):
+def photos_yn(call: types.CallbackQuery):
     """
     Опрашивающие кнопки уточняют нужны ли фотографии отелей
     если нет, то пользователю сразу отправляется ответ.
@@ -226,8 +223,7 @@ def photos_yn(call):
         bot.register_next_step_handler(send, photos_get)
 
     elif call.data == 'no':
-        # переделать чтобы просто получать ноль
-
+        # просто передает ноль
         sent = bot.send_message(call.message.chat.id, 'Отлично!🐾 сейчас подготовлю ссылки')
         time.sleep(1)
         with bot.retrieve_data(call.from_user.id, call.message.chat.id) as data:
@@ -238,7 +234,7 @@ def photos_yn(call):
         bot.send_message(call.message.chat.id, 'Я 🐶подготовил! Высылать? 🦊 /go')
 
     else:
-        bot.register_next_step_handler(call.message.chat.id, incorrect)
+        incorrect()
 
 
 @bot.message_handler(state=MyStates.count_photos, is_digit=True)
@@ -262,9 +258,6 @@ def photos_get(message: types.Message):
 
     else:
         bot.register_next_step_handler(message, incorrect)
-
-    print('count_p прошел')
-    print(message.from_user.id, message.chat.id)
 
 
 def ready(message: types.Message):
@@ -324,6 +317,8 @@ def homeland(message):
     city = message.text
     bot.send_message(message.chat.id, 'Хорошее место!🦮 сбегаю и посмотрю что там есть')
     mess = Homeland_rus.get_hotels(city)
+    name_id = f'{message.from_user.first_name}_{message.from_user.last_name}'
+    history_file(name_id, city, 0, 'местные', mess)
     for el in mess:
         bot.send_message(message.chat.id, el, parse_mode='HTML')
 
@@ -334,34 +329,38 @@ def homeland(message):
 @bot.message_handler(state=MyStates.count_place or MyStates.count_photos, is_digit=False)  # неверный числовой ввод
 def incorrect(message: types.Message):
     """
-    Неправильный вид данных для числового запроса
+    Неправильный вид данных для числового запроса перекидывает к старту
     """
     bot.send_message(message.chat.id, 'Гав, выглядит так, будто ты вводишь числа буквами... Я не знаю, '
                                       'просто введи число или лучше начнем сначала\n/help, /start')
-    bot.register_next_step_handler(message, send_welcome)
+    send_welcome()
 
 
 @bot.message_handler(commands=['history'])
 def histors(message: types.Message):
     """
-    Функция показывает историю
-    :param message:
-    :return:
+    Функция показывает историю из ограниченного количества элементов
+    затем высылает пользователю фаил с историей его запросов
     """
     name_id = f'{message.from_user.first_name}_{message.from_user.last_name}'
 
     try:
-        with open(f'historys/{name_id}.json', 'r', encoding='utf-8') as r:
+        with open(f'historys/{name_id}.txt', 'r', encoding='utf-8') as r:
             for i in range(15):
                 fp = r.readline()
                 fp = fp.partition('🏬')[0]
                 fp = fp.replace('\\n', ' ').replace('[', '').replace("'", '')
                 bot.send_message(message.from_user.id, fp, parse_mode='HTML')
+            r.close()
 
-        bot.send_document(message.from_user.id, f'historys/{name_id}.json')  # Какая будет дичь если заработает)
+        # отправка открытого файла с историей. Верстка там html но как лог подойдет
+        with open(f'historys/{name_id}.txt', 'r', encoding='utf-8') as r:
+            bot.send_document(message.chat.id, r)
+
 
     except:
-        bot.send_message(message.from_user.id, 'Вууф... почему-то я не могу найти твою историю')
+        bot.send_message(message.from_user.id, 'Вууф... почему-то не могу найти продолжение твоей истории...')
+
 
 
 @bot.message_handler(commands=['weather'])
@@ -409,14 +408,6 @@ def facts() -> str:
     return fact
 
 
-#bot.enable_save_next_step_handlers(delay=2)
-#bot.load_next_step_handlers()
-
-#bot.polling(none_stop=True)
-
-
-#  logger = telebot.logger
-#  telebot.logger.setLevel(logging.DEBUG)
 bot.add_custom_filter(custom_filters.StateFilter(bot))
 bot.add_custom_filter(custom_filters.IsDigitFilter())
 

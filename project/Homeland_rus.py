@@ -7,10 +7,16 @@ url_base = "https://hotels4.p.rapidapi.com/locations/v3/search"
 headers = hotels_token
 
 
-def get_hotels(city):
+def get_hotels(city: str) -> list:
+    """
+    Принимает название местного города
+    Например: Зеленогорск
+    Возвращает список с теми данными что получается вытащить
+    на Российские города.
+    На Лен области работает. Возможно можно вытянуть и более, надо изучать API"""
     nearby_hotel = []
     try:
-        querystring = {"q": f"{city}", "locale": "ru_RU"} # f"{MyStates.city}"
+        querystring = {"q": f"{city}", "locale": "ru_RU"}
         response = requests.request("GET", url_base, headers=headers, params=querystring, timeout=10)
         data = response.json()
         for i in range(len(data['sr'])):

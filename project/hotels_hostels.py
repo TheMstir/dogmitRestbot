@@ -1,7 +1,5 @@
 from config import hotels_token
 import requests
-import pprint
-import datetime
 
 url_base = "https://hotels4.p.rapidapi.com/locations/v3/search"
 url_list = "https://hotels4.p.rapidapi.com/properties/v2/list"
@@ -22,7 +20,6 @@ def get_hotels_box(city: str, count_place: int, count_photo: int, flag: str) -> 
 
         try:
             gaiaid = data['sr'][0]['gaiaId']  # пытаемся получить геоидентификатор
-            print(gaiaid)
         except:
             ex = ['Увы, тут я сейчас разнюхать не могу❓\nКто-то все спрятал...🚷\n'
                   'пойдем в /help, что-нибудь придумаем🔙']
@@ -62,7 +59,6 @@ def get_hotels_box(city: str, count_place: int, count_photo: int, flag: str) -> 
         response_2 = requests.request("POST", url_list, json=payload, headers=headers)
         data_2 = response_2.json()
         for i in range(count_place):
-            print('a')
             name = data_2['data']['propertySearch']['properties'][i]['name']
             hotel_id = data_2['data']['propertySearch']['properties'][i]['id']
             stars = data_2['data']['propertySearch']['properties'][i]['reviews']['score']
@@ -72,8 +68,6 @@ def get_hotels_box(city: str, count_place: int, count_photo: int, flag: str) -> 
             coordinates_lon = data_2['data']['propertySearch']['properties'][i]['mapMarker']['latLong']['longitude']
             dest_from_center = data_2['data']['propertySearch']['properties'][i]['destinationInfo']['distanceFromDestination']['value']*1.602
             #  сделать универсальное начало для последних 3х переменных
-            print('b')
-            print(list_view)
 
             payload = {
                 "currency": "USD",
@@ -99,7 +93,6 @@ def get_hotels_box(city: str, count_place: int, count_photo: int, flag: str) -> 
                    f"Что находиться в {int(dest_from_center)}км.\n от центра города 🏬" \
                    f"🏢Если будете искать то смотрите такое здание: {url_photo}"
             # считаю визуально необходимым прикрепить хотя бы одно фото к выдаче в виде ссылки
-
             # оставил доп знаки чтобы вытащить координаты регулярками и в дальнейшем передать их
 
             if count_photo == 0:
@@ -117,8 +110,6 @@ def get_hotels_box(city: str, count_place: int, count_photo: int, flag: str) -> 
                'пойдем в /help, что-нибудь придумаем🔙'
         list_view.append(mess)
         return list_view
-
-
 
 # Функция с циклом по количеству показываемых объектов, надо будет отправлять каждый
 # Если фото то дополнительно качать
